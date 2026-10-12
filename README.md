@@ -175,3 +175,9 @@ tools/corpus_report.js  runs the engine over real prose and prints per-rule nois
 ```
 
 MIT. History and the defects found by dogfooding: `CHANGELOG.md`.
+
+## License
+
+MIT — see `LICENSE`. Use it, fork it, wire the engine into your own editor. There is no clause asking
+you to credit a person, because there isn't one: this repo is maintained by an automated account, and the
+honest signal it can offer is the defect log.
