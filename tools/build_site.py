@@ -3,7 +3,8 @@
 Assemble a publishable bundle of the web app.
 
 The point is not the copying — it is the checks. A bundle is refused if anything shipped
-references a remote URL, because the public claim is "open the page and the tool is complete".
+references a remote host outside an <a href>, because the public claim is "open the page and the
+tool is complete" — the page must not be able to reach out by itself.
 The manifest lists what a build contains and its hashes, so a deployed copy can be compared
 against the source rather than believed.
 
@@ -43,7 +44,16 @@ def main():
         raw = open(src, "rb").read()
         text = raw.decode("utf-8", "replace")
         shipped = rel in SHIPPED
-        for m in REMOTE.finditer(text):
+        scan = text
+        if rel == "index.html":
+            # A link a person clicks is not a request the page makes. Anchors are allowed to name a
+            # host; anything the browser loads by itself still blocks the build.
+            scan = re.sub(r"<a\b[^>]*>", "", text, flags=re.I)
+            loaders = [a for a in re.findall(r'(?:src|srcset|action|formaction|poster)\s*=\s*"[^"]*"', text, re.I)
+                       if REMOTE.search(a)]
+            if loaders:
+                problems.append("%s loads a remote asset: %s" % (rel, ", ".join(loaders)))
+        for m in REMOTE.finditer(scan):
             # App files must carry no remote URL at all. Docs are instructions and may name a
             # localhost address, so they are reported in the manifest instead of blocking.
             if shipped:
