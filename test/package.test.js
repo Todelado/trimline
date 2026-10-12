@@ -13,6 +13,7 @@ const JS_FILES = ['src/rules.js', 'src/app.js'].map(f => path.join(ROOT, f));
 const ALL = [PAGE].concat(JS_FILES);
 
 function read(f) { return fs.readFileSync(f, 'utf8'); }
+const Trimline = require('../src/rules.js');
 
 test('no network APIs are referenced anywhere in the shipped page', () => {
   const forbidden = [/\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /EventSource/,
@@ -78,4 +79,21 @@ test('version is stated in exactly one place', () => {
   const pkg = JSON.parse(read(path.join(ROOT, 'package.json')));
   const engine = rules.match(/version:\s*'([\d.]+)'/)[1];
   assert.equal(pkg.version, engine, 'package.json (' + pkg.version + ') must match the engine (' + engine + ')');
+});
+
+test('the page\'s own prose obeys its own rules', () => {
+  // a linter whose interface contains the sloppiness it flags has lost the argument
+  const html = fs.readFileSync(PAGE, 'utf8');
+  const strings = (html.match(/>([^<>{}]{25,})</g) || [])
+    .map(function (m) { return m.slice(1, -1).replace(/\s+/g, ' ').trim(); })
+    .filter(function (t) { return !/var |function |const |=>/.test(t); });
+  assert.ok(strings.length >= 5, 'expected to find UI prose to check, got ' + strings.length);
+  // long-sentence is excluded on purpose: UI prose is fragments and labels, not paragraphs
+  const offenders = [];
+  strings.forEach(function (t) {
+    Trimline.analyze(t).issues.forEach(function (i) {
+      if (i.rule !== 'long-sentence') offenders.push(i.rule + ' in "' + t.slice(0, 60) + '"');
+    });
+  });
+  assert.deepEqual(offenders, [], 'UI copy trips its own rules: ' + offenders.join('; '));
 });

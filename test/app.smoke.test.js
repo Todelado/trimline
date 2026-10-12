@@ -196,3 +196,4 @@ test('the card overflow line stays clear of the footer', () => {
   const rows = drawn.filter(function (d) { return /^· /.test(d.text); });
   assert.ok(rows.length <= 3 || !overflow, 'rows + overflow must fit above the footer');
 });
+
