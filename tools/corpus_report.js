@@ -26,6 +26,15 @@ function arg(name, dflt) {
 }
 const ROOT = path.resolve(__dirname, '..', '..', '..');   // .../workspace
 const DIR = path.isAbsolute(arg('dir', '') || '') ? arg('dir') : path.resolve(ROOT, arg('dir', 'corpus'));
+
+// The default points at a folder that lives outside this repo, so say so instead of throwing ENOENT
+// at someone who has never seen it.
+if (!fs.existsSync(DIR) || !fs.statSync(DIR).isDirectory()) {
+  console.error('No corpus at: ' + DIR);
+  console.error('Pass a folder of .txt files you have the rights to read:  node tools/corpus_report.js --dir ./my-texts');
+  console.error('The texts this was calibrated on are Project Gutenberg editions; see README.md.');
+  process.exit(2);
+}
 const SAMPLES = parseInt(arg('samples', '3'), 10);
 const LIMIT = parseInt(arg('limit', '0'), 10);   // paragraphs per file, 0 = all
 const ENGINE = loadSet(arg('rules', ''));

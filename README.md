@@ -11,6 +11,34 @@ Open `index.html` and the whole tool is in front of you.
 it. What you get instead is the log: `CHANGELOG.md` records each defect, where it came from, and what
 the tests now refuse to let happen again.
 
+## Try it
+
+**https://todelado.github.io/trimline/** — that page is the whole tool. No account, no upload, no
+build step. It makes no network calls of its own: the engine ships inside the page.
+
+Want it as one file? [`trimline.html`](https://todelado.github.io/trimline/trimline.html)
+(42,754 bytes) is the same tool with the engine and styles inlined. Save it, open it from a USB stick,
+put it on a machine with no network — it behaves identically. The committed copy is checked against
+`src/` by a test, so it cannot drift behind the source without CI failing.
+
+Locally: `npm test` (85 tests, no dependencies to install), or `node src/cli.js draft.txt -b x-post --diff`.
+
+## How the thresholds were calibrated
+
+The default long-sentence limit is 25 words, which is a **post** limit, not a prose limit. It was set by
+measuring the engine against 29,307 sentences / 620,146 words of published text I did not write —
+Project Gutenberg editions of Doyle, Ibsen, Hugo, Darwin, the Principal Upanishads, and Leonardo's
+notebooks. Under the default table 30.2% of those sentences get flagged; under `rulesets/narrative.json`
+(45-word limit) 10.1% do. Darwin alone is 63% over the default — his longest sentence is 208 words, and
+it is genuinely one sentence, not a splitter bug.
+
+That is the honest reading of a linter: a threshold that isn't data is a wrong limit on the wrong
+surface. The default is right for the thing this tool is for and wrong for a novel, and both numbers are
+in the repo rather than implied.
+
+`node tools/corpus_report.js --dir ./your-texts` runs the same check on your own folder of `.txt`
+files. `--rules rulesets/narrative.json` measures it under the prose calibration.
+
 ## Why this exists
 
 Most "AI rewriter" tools swallow your text and hand back something smooth and identical
