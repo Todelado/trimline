@@ -1,0 +1,14 @@
+{
+  "name": "lean-voice",
+  "comment": "Stricter profile for short-form posts: the built-ins you can trust plus a few I keep hitting in my own drafts. Safe is opt-in per rule.",
+  "intensifiers": ["very", "really", "just", "quite", "actually", "basically", "simply", "literally", "totally", "absolutely", "extremely", "somehow", "kind of", "sort of"],
+  "phrases": [
+    { "from": "in order to", "to": "to", "safe": true, "note": "padded infinitive" },
+    { "from": "at the end of the day", "to": "ultimately", "safe": true, "note": "cliché" },
+    { "from": "it goes without saying", "to": "", "safe": true, "note": "throat-clearing" },
+    { "from": "with that being said", "to": "still", "safe": false, "note": "usually deletable, sometimes a turn" },
+    { "from": "I wanted to share", "to": "", "safe": false, "note": "announcement of the post, not the post" },
+    { "from": "check it out", "to": "try it", "safe": true, "note": "vague call to action" },
+    { "from": "let me know your thoughts", "to": "", "safe": false, "note": "filler closer" }
+  ]
+}

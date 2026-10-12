@@ -1,0 +1,14 @@
+{
+  "name": "narrative",
+  "comment": "For prose that is meant to breathe: a 25-word sentence limit is a social-post rule, not a rule of writing. Long sentences stay visible but at a length that actually reads as long, and only cuts that are safe in any register are automatic.",
+  "thresholds": { "longSentenceWords": 45, "bulletWall": 6 },
+  "intensifiers": ["very", "really", "quite", "extremely", "somewhat"],
+  "phrases": [
+    { "from": "in order to", "to": "to", "safe": true, "note": "padded infinitive" },
+    { "from": "due to the fact that", "to": "because", "safe": true, "note": "padded causal" },
+    { "from": "at this point in time", "to": "now", "safe": true, "note": "padded time" },
+    { "from": "in the event that", "to": "if", "safe": true, "note": "padded conditional" },
+    { "from": "she said quietly", "to": "she said", "safe": false, "note": "telling instead of showing — the author decides" },
+    { "from": "suddenly", "to": "", "safe": false, "note": "almost always removable; sometimes it is the beat" }
+  ]
+}

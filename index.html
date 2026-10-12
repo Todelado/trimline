@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trimline — cut the flab, keep the meaning</title>
+<meta name="description" content="Offline text tightening for short-form writing. Rule-based, deterministic, no network calls.">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#2a313c; --ink:#e8edf2; --dim:#93a0af;
+    --accent:#ffd23f; --good:#5ad19a; --warn:#ffb454; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif}
+  header{padding:22px 20px 8px;max-width:1180px;margin:0 auto}
+  h1{margin:0;font-size:22px;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--dim);margin:6px 0 0;font-size:14px}
+  main{max-width:1180px;margin:0 auto;padding:16px 20px 60px;
+    display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:16px}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  textarea{width:100%;min-height:340px;background:#0b0e13;color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:12px;font:15px/1.6 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+  textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button,select{background:#1d242e;color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#171a1f;border-color:var(--accent);font-weight:650}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin:0 0 12px}
+  .stat{background:#11161d;border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .stat b{display:block;font-size:19px;letter-spacing:-.02em}
+  .stat small{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .bar{height:8px;background:#0b0e13;border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;background:var(--good);transition:width .15s ease}
+  .bar i.warn{background:var(--warn)} .bar i.bad{background:var(--bad)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:18px 0 8px}
+  ul.flags{list-style:none;margin:0;padding:0;display:grid;gap:7px;max-height:460px;overflow:auto}
+  li.flag{border:1px solid var(--line);border-radius:9px;padding:8px 9px;background:#11161d;font-size:14px}
+  li.flag .m{font-family:ui-monospace,Menlo,monospace}
+  li.flag .n{color:var(--dim);font-size:12.5px}
+  li.flag .tag{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#0e1116;
+    background:var(--dim);border-radius:4px;padding:1px 5px;margin-right:6px}
+  li.flag.safe .tag{background:var(--good)} li.flag.maybe .tag{background:var(--warn);color:#0e1116}
+  .out{white-space:pre-wrap;background:#0b0e13;border:1px solid var(--line);
+    border-radius:8px;padding:12px;font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;min-height:120px}
+  .foot{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--dim);font-size:13px}
+  .foot a{color:var(--dim)}
+  code.k{background:#0b0e13;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Trim<span>line</span></h1>
+  <p class="sub">Cut the flab, keep the meaning. Rule-based, deterministic, and offline — your text never leaves this page.</p>
+</header>
+
+<main>
+  <section class="card">
+    <label for="src" style="display:block;color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px">Draft</label>
+    <textarea id="src" spellcheck="false" placeholder="Paste a draft. A post, an email, a README paragraph…"></textarea>
+    <div class="row">
+      <button class="primary" id="apply">Apply safe cuts</button>
+      <button id="aggressive">Apply everything</button>
+      <button id="undo">Undo</button>
+      <button id="copy">Copy trimmed</button>
+      <button id="card">Download share card (PNG)</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row" style="margin-top:6px;color:var(--dim);font-size:13px" id="status"></div>
+  </section>
+
+  <section class="card">
+    <div class="stats" id="stats"></div>
+    <h2>Budget</h2>
+    <div class="row" style="margin:0 0 8px">
+      <select id="budget"></select>
+      <span id="budgetText" style="color:var(--dim);font-size:13px"></span>
+    </div>
+    <div class="bar"><i id="budgetBar"></i></div>
+
+    <h2>Suggested trim</h2>
+    <div class="out" id="out"></div>
+
+    <h2>Findings</h2>
+    <ul class="flags" id="flags"></ul>
+
+    <h2>Rule set</h2>
+    <textarea id="ruleset" spellcheck="false" style="min-height:96px;font-size:13px"
+      placeholder='{"name":"my-profile","phrases":[{"from":"at the end of the day","to":"ultimately","safe":true}]}'></textarea>
+    <div class="row">
+      <button id="loadrules">Load rule set</button>
+      <button id="resetrules">Use built-in</button>
+      <span id="rulesetStatus" style="color:var(--dim);font-size:13px"></span>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Rules engine <code class="k">v<span id="ver"></span></code> · <span id="ruleCount"></span> phrase rules by default, plus long-sentence, passive-voice, intensifier and layout checks. Paste your own rule set as JSON to replace the table — a rule is only auto-applied if you mark it <code class="k">"safe": true</code>.
+  Nothing is uploaded anywhere: open the page and the tool is complete. Sample drafts are not stored.</p>
+  <p>Built as a build-in-public project. Shortcuts: <code class="k">Ctrl/Cmd + Enter</code> applies safe cuts.</p>
+</footer>
+
+<script src="src/rules.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>

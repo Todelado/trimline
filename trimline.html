@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trimline — cut the flab, keep the meaning</title>
+<meta name="description" content="Offline text tightening for short-form writing. Rule-based, deterministic, no network calls.">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#2a313c; --ink:#e8edf2; --dim:#93a0af;
+    --accent:#ffd23f; --good:#5ad19a; --warn:#ffb454; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif}
+  header{padding:22px 20px 8px;max-width:1180px;margin:0 auto}
+  h1{margin:0;font-size:22px;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--dim);margin:6px 0 0;font-size:14px}
+  main{max-width:1180px;margin:0 auto;padding:16px 20px 60px;
+    display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:16px}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  textarea{width:100%;min-height:340px;background:#0b0e13;color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:12px;font:15px/1.6 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+  textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button,select{background:#1d242e;color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#171a1f;border-color:var(--accent);font-weight:650}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin:0 0 12px}
+  .stat{background:#11161d;border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .stat b{display:block;font-size:19px;letter-spacing:-.02em}
+  .stat small{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .bar{height:8px;background:#0b0e13;border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;background:var(--good);transition:width .15s ease}
+  .bar i.warn{background:var(--warn)} .bar i.bad{background:var(--bad)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:18px 0 8px}
+  ul.flags{list-style:none;margin:0;padding:0;display:grid;gap:7px;max-height:460px;overflow:auto}
+  li.flag{border:1px solid var(--line);border-radius:9px;padding:8px 9px;background:#11161d;font-size:14px}
+  li.flag .m{font-family:ui-monospace,Menlo,monospace}
+  li.flag .n{color:var(--dim);font-size:12.5px}
+  li.flag .tag{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#0e1116;
+    background:var(--dim);border-radius:4px;padding:1px 5px;margin-right:6px}
+  li.flag.safe .tag{background:var(--good)} li.flag.maybe .tag{background:var(--warn);color:#0e1116}
+  .out{white-space:pre-wrap;background:#0b0e13;border:1px solid var(--line);
+    border-radius:8px;padding:12px;font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;min-height:120px}
+  .foot{max-width:1180px;margin:0 auto;padding:0 20px 40px;color:var(--dim);font-size:13px}
+  .foot a{color:var(--dim)}
+  code.k{background:#0b0e13;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Trim<span>line</span></h1>
+  <p class="sub">Cut the flab, keep the meaning. Rule-based, deterministic, and offline — your text never leaves this page.</p>
+</header>
+
+<main>
+  <section class="card">
+    <label for="src" style="display:block;color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px">Draft</label>
+    <textarea id="src" spellcheck="false" placeholder="Paste a draft. A post, an email, a README paragraph…"></textarea>
+    <div class="row">
+      <button class="primary" id="apply">Apply safe cuts</button>
+      <button id="aggressive">Apply everything</button>
+      <button id="undo">Undo</button>
+      <button id="copy">Copy trimmed</button>
+      <button id="card">Download share card (PNG)</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row" style="margin-top:6px;color:var(--dim);font-size:13px" id="status"></div>
+  </section>
+
+  <section class="card">
+    <div class="stats" id="stats"></div>
+    <h2>Budget</h2>
+    <div class="row" style="margin:0 0 8px">
+      <select id="budget"></select>
+      <span id="budgetText" style="color:var(--dim);font-size:13px"></span>
+    </div>
+    <div class="bar"><i id="budgetBar"></i></div>
+
+    <h2>Suggested trim</h2>
+    <div class="out" id="out"></div>
+
+    <h2>Findings</h2>
+    <ul class="flags" id="flags"></ul>
+
+    <h2>Rule set</h2>
+    <textarea id="ruleset" spellcheck="false" style="min-height:96px;font-size:13px"
+      placeholder='{"name":"my-profile","phrases":[{"from":"at the end of the day","to":"ultimately","safe":true}]}'></textarea>
+    <div class="row">
+      <button id="loadrules">Load rule set</button>
+      <button id="resetrules">Use built-in</button>
+      <span id="rulesetStatus" style="color:var(--dim);font-size:13px"></span>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>Rules engine <code class="k">v<span id="ver"></span></code> · <span id="ruleCount"></span> phrase rules by default, plus long-sentence, passive-voice, intensifier and layout checks. Paste your own rule set as JSON to replace the table — a rule is only auto-applied if you mark it <code class="k">"safe": true</code>.
+  Nothing is uploaded anywhere: open the page and the tool is complete. Sample drafts are not stored.</p>
+  <p>Built as a build-in-public project. Shortcuts: <code class="k">Ctrl/Cmd + Enter</code> applies safe cuts.</p>
+</footer>
+
+<script>
+/* inlined from src/rules.js */
+/*
+ * Trimline rules engine (v0.1)
+ * Pure, deterministic, zero-dependency. Runs in the browser and in Node.
+ * Design rule: a suggestion is only "safe" if replacing it cannot change meaning
+ * or break grammar. Anything subjective is reported as a flag, never auto-applied.
+ */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------- phrase rules
+  // Word boundaries, without \b: \b counts "_" as a word character, so markdown emphasis
+  // ("_in order to_ ship") used to hide the phrase from the matcher entirely.
+  // No lookbehind either — older Safari must still be able to run the page build.
+  // The boundary is any character that is not a letter or digit — including "_", which is exactly
+  // what \b wrongly treats as a word character.
+  var SENTINEL = '\u0001';   // marks a deletion site for this run only; never survives trim
+  var LBOUND = '(^|[^A-Za-z0-9])';
+  var RBOUND = '(?![A-Za-z0-9])';
+  function wordRe(body, flags) {
+    return new RegExp(LBOUND + body + RBOUND, flags || 'gi');
+  }
+
+
+  // safe:true  -> auto-applied by trim()
+  // safe:false -> reported as a suggestion only
+  var PHRASES = [
+    { from: 'in order to', to: 'to', safe: true, note: 'padded infinitive' },
+    { from: 'due to the fact that', to: 'because', safe: true, note: 'padded causal' },
+    { from: 'owing to the fact that', to: 'because', safe: true, note: 'padded causal' },
+    { from: 'at this point in time', to: 'now', safe: true, note: 'padded time' },
+    { from: 'in the event that', to: 'if', safe: true, note: 'padded conditional' },
+    { from: 'in spite of the fact that', to: 'although', safe: true, note: 'padded concessive' },
+    { from: 'a large number of', to: 'many', safe: true, note: 'padded quantifier' },
+    { from: 'a majority of', to: 'most', safe: true, note: 'padded quantifier' },
+    { from: 'each and every other', to: 'every other', safe: true, note: 'doublet + ordinal' },
+    { from: 'each and every', to: 'each', safe: true, note: 'doublet' },
+    { from: 'various different', to: 'various', safe: true, note: 'doublet' },
+    { from: 'absolutely essential', to: 'essential', safe: true, note: 'doublet' },
+    { from: 'completely eliminate', to: 'eliminate', safe: true, note: 'doublet' },
+    { from: 'final outcome', to: 'outcome', safe: true, note: 'doublet' },
+    { from: 'past history', to: 'history', safe: true, note: 'doublet' },
+    { from: 'new innovation', to: 'innovation', safe: true, note: 'doublet' },
+    { from: 'on a daily basis', to: 'daily', safe: true, note: 'padded adverbial' },
+    { from: 'on a regular basis', to: 'regularly', safe: true, note: 'padded adverbial' },
+    { from: 'in a timely manner', to: 'promptly', safe: true, note: 'padded adverbial' },
+    { from: 'in most cases', to: 'usually', safe: false, note: 'hedging, may carry meaning' },
+    { from: 'with regard to', to: 'about', safe: true, note: 'padded reference' },
+    { from: 'with respect to', to: 'about', safe: true, note: 'padded reference' },
+    { from: 'in terms of', to: 'for', safe: false, note: 'vague frame; check meaning' },
+    { from: 'take into account', to: 'consider', safe: true, note: 'nominalisation' },
+    { from: 'make a decision', to: 'decide', safe: true, note: 'nominalisation' },
+    { from: 'makes a decision', to: 'decides', safe: true, note: 'nominalisation' },
+    { from: 'made a decision', to: 'decided', safe: true, note: 'nominalisation' },
+    { from: 'took into account', to: 'considered', safe: true, note: 'nominalisation' },
+    { from: 'came to a conclusion', to: 'concluded', safe: true, note: 'nominalisation' },
+    { from: 'had the ability to', to: 'could', safe: true, note: 'nominalisation' },
+    { from: 'come to a conclusion', to: 'conclude', safe: true, note: 'nominalisation' },
+    { from: 'reach an agreement', to: 'agree', safe: true, note: 'nominalisation' },
+    { from: 'give consideration to', to: 'consider', safe: true, note: 'nominalisation' },
+    { from: 'have the ability to', to: 'can', safe: true, note: 'nominalisation' },
+    { from: 'is able to', to: 'can', safe: true, note: 'nominalisation' },
+    { from: 'was able to', to: 'could', safe: true, note: 'nominalisation' },
+    { from: 'has the capacity to', to: 'can', safe: true, note: 'nominalisation' },
+    { from: 'for the purpose of', to: 'to', safe: false, note: 'needs gerund rewrite' },
+    { from: 'as a means of', to: 'to', safe: false, note: 'needs gerund rewrite' },
+    { from: 'it should be noted that', to: '', safe: true, note: 'throat-clearing' },
+    { from: 'it is worth noting that', to: '', safe: true, note: 'throat-clearing' },
+    { from: 'needless to say', to: '', safe: false, note: 'throat-clearing, but tone-setting' },
+    { from: 'I think that', to: '', safe: false, note: 'hedging; keep if you mean "I believe"' },
+    { from: 'I believe that', to: '', safe: false, note: 'hedging' },
+    { from: 'there are', to: '', safe: false, note: 'existential opener; usually cuttable' },
+    { from: 'there is', to: '', safe: false, note: 'existential opener; usually cuttable' },
+    { from: 'there was', to: '', safe: false, note: 'existential opener; usually cuttable' },
+    { from: 'used to be able to', to: 'could', safe: true, note: 'padded modal' }
+  ];
+
+  // Intensity words: never auto-removed (they can carry emphasis the writer wants).
+  var INTENSIFIERS = ['very', 'really', 'quite', 'actually', 'basically', 'simply',
+    'literally', 'just', 'totally', 'absolutely', 'extremely', 'somewhat', 'rather'];
+
+  var PARTICIPLES = '\\w+ed|made|seen|known|given|taken|written|shown|held|built|sent|' +
+    'kept|found|left|brought|thought|told|asked|allowed|called|paid|read|built|put|set|cut|drawn|grown|thrown|flown';
+
+  var BUDGETS = [
+    { id: 'x-post', label: 'X post', max: 280, hint: 'links cost 23 characters' },
+    { id: 'x-thread-step', label: 'X thread step', max: 250, hint: 'leave room for the step number' },
+    { id: 'subject', label: 'Email subject', max: 60, hint: 'desktop inbox truncates around 60' },
+    { id: 'push', label: 'Push / notification', max: 120, hint: 'two lines on most phones' },
+    { id: 'readme-line', label: 'README tagline', max: 140, hint: 'shows next to the repo name' },
+    { id: 'linkedin', label: 'LinkedIn post', max: 3000, hint: 'hard cut at 3000' },
+    { id: 'prs-body', label: 'PR description', max: 1000, hint: 'reviewers skim' }
+  ];
+
+  // ---------------------------------------------------------------- helpers
+  function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function preserveCase(sample, replacement) {
+    if (!replacement) return '';
+    var m = sample.match(/^[A-Z][a-z]+/);
+    if (m && sample[0] === m[0][0]) {
+      return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+    }
+    if (/^[A-Z]+$/.test(sample)) return replacement.toUpperCase();
+    return replacement;
+  }
+
+  // Longest-first so "in order to" wins over "in order".
+  var PHRASES_SORTED = PHRASES.slice().sort(function (a, b) {
+    return b.from.length - a.from.length;
+  });
+
+  function countWords(text) {
+    var t = String(text || '').trim();
+    return t ? t.split(/\s+/).length : 0;
+  }
+
+  // Sentence boundaries are where the naive version of this tool used to break:
+  // "Dr. Smith arrived at 3.5pm." is one sentence, not two.
+  var ABBREVIATIONS = ['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'sr', 'jr', 'vs', 'etc',
+    'ie', 'i.e', 'eg', 'e.g', 'inc', 'ltd', 'co', 'approx', 'fig', 'al', 'dept', 'jan',
+    'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+  var ADJECTIVAL_PARTICIPLES = ['tired', 'bored', 'excited', 'surprised', 'married', 'afraid',
+    'confused', 'frightened', 'pleased', 'disappointed', 'interested', 'annoyed', 'embarrassed',
+    'worried', 'gone', 'done', 'ready'];
+
+  // What may sit between a sentence-ending mark and the space that follows it: closing quotes,
+  // brackets, markdown emphasis, and — in older and translated texts — a dash:
+  // "Chapters_.—I have attempted…" was one 214-word "sentence" until this existed.
+  var CLOSERS = '\"\'”’)]_*';
+  function skipTail(src, i) {
+    // punctuation, then any closing marks, then at most one dash: "Chapters_.—I have…" and
+    // "said—“Do not go.”" both have to be readable as a boundary
+    var j = i + 1;
+    while (j < src.length && CLOSERS.indexOf(src[j]) !== -1) j++;
+    if (j < src.length && (src[j] === '-' || src[j] === '\u2014' || src[j] === '\u2013')) {
+      j++;
+      while (j < src.length && CLOSERS.indexOf(src[j]) !== -1) j++;
+    }
+    return j;
+  }
+
+  function isSentenceEnd(src, i) {
+    var ch = src[i];
+    if ('.!?'.indexOf(ch) === -1) return false;
+    var j = skipTail(src, i);
+    var next = src[j];
+    // after the punctuation (and any closers/dash) there must be a space, an end, or the visible
+    // start of a new sentence — a capital, a digit, or an opening quote. "e.g. this" fails the
+    // abbreviation check below; "smth.x" fails here.
+    var looksLikeNewSentence = next !== undefined && /^[A-Z0-9\"'“‘(\[]/.test(next);
+    if (next !== undefined && !/\s/.test(next) && !looksLikeNewSentence) return false;
+
+    if (ch === '.') {
+      var prev = src[i - 1];
+      if (prev === undefined) return false;
+      // decimal: 3.5
+      if (/[0-9]/.test(prev) && /[0-9]/.test(next || '')) return false;
+      if (looksLikeNewSentence && /[0-9]/.test(prev) ) { /* digits before a capital: still a break */ }
+      // abbreviation: Dr. / e.g. / etc., and single-letter initials: J. K.
+      // (match the word before the period; never test a slice against a ^-anchored pattern,
+      //  because ^ matches the start of any slice and silently swallows real sentence ends)
+      var m = src.slice(0, i + 1).match(/([A-Za-z](?:[A-Za-z.]*[A-Za-z])?)\.?$/);
+      if (m) {
+        var token = m[1];
+        if (token.length === 1 && /[A-Z]/.test(token)) return false;
+        var low = token.toLowerCase();
+        if (ABBREVIATIONS.indexOf(low) !== -1 || ABBREVIATIONS.indexOf(low.replace(/\./g, '')) !== -1) return false;
+      }
+    }
+    // a sentence ends if what follows looks like a new one, or the line ends here
+    var rest = src.slice(j);
+    if (/^\s*([\"'“‘(\[]?[A-Z0-9])/.test(rest)) return true;
+    return /^\s*$/.test(rest);
+  }
+
+  function sentences(text) {
+    var src = String(text || '');
+    var out = [];
+    var start = 0;
+    for (var i = 0; i < src.length; i++) {
+      if (src[i] === '\n') {
+        var chunk = src.slice(start, i).trim();
+        if (chunk) out.push(chunk);
+        start = i + 1;
+        continue;
+      }
+      if (isSentenceEnd(src, i)) {
+        var j = skipTail(src, i);   // closing quotes, emphasis and dashes belong to the sentence
+        var piece = src.slice(start, j).trim();
+        if (piece) out.push(piece);
+        while (src[j] === ' ' || src[j] === '\t') j++;
+        start = j;
+        i = j - 1;
+      }
+    }
+    var tail = src.slice(start).trim();
+    if (tail) out.push(tail);
+    return out;
+  }
+
+  function syllables(word) {
+    var w = String(word).toLowerCase().replace(/[^a-z]/g, '');
+    if (!w) return 0;
+    if (w.length <= 3) return 1;
+    w = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+    var groups = w.match(/[aeiouy]{1,2}/g);
+    return Math.max(1, groups ? groups.length : 1);
+  }
+
+  function readability(text) {
+    var ws = sentences(text);
+    var words = countWords(text);
+    if (!ws.length || !words) return { ease: null, grade: null, words: words, sentences: ws.length };
+    var syl = 0;
+    String(text).split(/\s+/).forEach(function (tok) { syl += syllables(tok); });
+    var ease = 206.835 - 1.015 * (words / ws.length) - 84.6 * (syl / words);
+    var grade = 0.39 * (words / ws.length) + 11.8 * (syl / words) - 15.59;
+    return {
+      ease: Math.round(ease * 10) / 10,
+      grade: Math.round(grade * 10) / 10,
+      words: words,
+      sentences: ws.length
+    };
+  }
+
+  // ---------------------------------------------------------------- flags
+  function findFlags(text, ruleset) {
+    var RS = ruleset || DEFAULT_RULESET;
+    var flags = [];
+    var src = String(text || '');
+
+    function push(rule, match, note, kind) {
+      flags.push({
+        rule: rule,
+        match: match,
+        note: note || '',
+        kind: kind || 'phrase',
+        index: src.indexOf(match)
+      });
+    }
+
+    // 1. phrase rules (longest first, so an overlapping shorter rule is not counted twice)
+    var claimed = [];
+    function claimedSpan(index, length) {
+      return claimed.some(function (r) { return index >= r[0] && index + length <= r[1]; });
+    }
+    RS.phrasesSorted.forEach(function (rule) {
+      var re = wordRe(escapeRe(rule.from));
+      var m;
+      while ((m = re.exec(src)) !== null) {
+        var at = m.index + m[1].length;            // m[1] is the boundary character, not the match
+        if (claimedSpan(at, m[0].length - m[1].length)) {
+          if (m.index === re.lastIndex) re.lastIndex++;
+          continue;
+        }
+        claimed.push([at, at + m[0].length - m[1].length]);
+        flags.push({
+          rule: rule.from,
+          to: rule.to,
+          safe: rule.safe,
+          match: m[0].slice(m[1].length),
+          note: rule.note,
+          kind: 'phrase',
+          index: at
+        });
+        if (m.index === re.lastIndex) re.lastIndex++;
+      }
+    });
+
+    // spans already explained by a phrase rule should not be counted again
+    var covered = flags.filter(function (f) { return f.kind === 'phrase'; })
+      .map(function (f) { return [f.index, f.index + f.match.length]; });
+    function insideSpan(index, length) {
+      if (index == null) return false;
+      return covered.some(function (r) { return index >= r[0] && index + length <= r[1]; });
+    }
+
+    // 2. long sentences
+    var limit = RS.thresholds.longSentenceWords;
+    sentences(src).forEach(function (s) {
+      var n = countWords(s);
+      if (n > limit) {
+        flags.push({
+          rule: 'long-sentence',
+          match: s.slice(0, 60) + (s.length > 60 ? '…' : ''),
+          note: n + ' words (limit ' + limit + ') — split it or cut a clause',
+          kind: 'structure',
+          words: n
+        });
+      }
+    });
+
+    // 3. passive voice (heuristic)
+    var passive = wordRe('(is|are|was|were|be|been|being|am)\\s+(' + PARTICIPLES + ')');
+    var pm;
+    while ((pm = passive.exec(src)) !== null) {
+      var pat = pm.index + pm[1].length;
+      if (insideSpan(pat, pm[0].length - pm[1].length)) continue;
+      // "I was tired" is a state, not a passive construction with a hidden actor
+      if (ADJECTIVAL_PARTICIPLES.indexOf(pm[3].toLowerCase()) !== -1) continue;
+      flags.push({
+        rule: 'passive',
+        match: pm[0],
+        note: 'name the actor instead',
+        kind: 'voice',
+        index: pm.index
+      });
+    }
+
+    // 4. intensifiers
+    RS.intensifiers.forEach(function (word) {
+      var re = wordRe(word);
+      var m;
+      while ((m = re.exec(src)) !== null) {
+        var iat = m.index + m[1].length;
+        if (insideSpan(iat, m[0].length - m[1].length)) { if (m.index === re.lastIndex) re.lastIndex++; continue; }
+        flags.push({
+          rule: 'intensifier',
+          match: m[0].slice(m[1].length),
+          note: 'cut it, or pick a stronger verb',
+          kind: 'word',
+          index: iat
+        });
+      }
+    });
+
+    // 5. slash-and-cadence problems
+    if (/\s{2,}/.test(src)) {
+      flags.push({ rule: 'double-space', match: 'multiple spaces', note: 'collapse to one', kind: 'format' });
+    }
+    var bullets = src.split(/\n/).filter(function (l) { return /^\s*[-*•]/.test(l); });
+    if (bullets.length >= RS.thresholds.bulletWall) {
+      flags.push({ rule: 'bullet-wall', match: bullets.length + ' bullets', note: 'a list this long reads as a wall', kind: 'structure' });
+    }
+
+    flags.sort(function (a, b) { return (a.index || 0) - (b.index || 0); });
+    return flags;
+  }
+
+  // ---------------------------------------------------------------- trim
+  function trim(text, opts, ruleset) {
+    var RS = ruleset || DEFAULT_RULESET;
+    var options = opts || {};
+    var aggressive = !!options.aggressive; // applies non-safe phrase rules too
+    var out = String(text || '');
+    var applied = [];
+
+    RS.phrasesSorted.forEach(function (rule) {
+      if (!rule.safe && !aggressive) return;
+      var re = wordRe(escapeRe(rule.from));
+      out = out.replace(re, function (m, lead, offset) {
+        var matched = m.slice(lead.length);
+        applied.push({ from: matched, to: rule.to, rule: rule.from, safe: rule.safe });
+        var rep = preserveCase(matched, rule.to);
+        // A marker goes down only where a cut landed at the start of a sentence, so the capital
+        // follows the cut and nothing else. A blanket pass used to "fix" prose that was never
+        // touched: "Oh! don’t say that" became "Oh! Don’t say that" — not a cut, a rewrite.
+        var start = offset + lead.length;
+        var atStart = start === 0 || /[.!?]["'”’)]?\s*$/.test(out.slice(0, start));
+        if (!rule.to) return lead + (atStart ? SENTINEL : '');
+        return lead + (atStart ? SENTINEL : '') + rep;
+      });
+    });
+
+    // whitespace tidy-up after any deletion
+    out = out
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+([,.;:!?])/g, '$1')
+      // strip every leading stray mark at once: one-per-pass left trim() non-idempotent
+      .replace(/^(?:\s*[,.;:!?])+/, '')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^[ \t\r\n]+/, '')
+      .replace(/[ \t\r\n]+$/, '');
+
+    // capitalise only where this run actually deleted something, then drop the markers
+    out = out.replace(new RegExp(SENTINEL + '\\s*([a-z])', 'g'), function (m, ch) {
+      return SENTINEL + ch.toUpperCase();
+    });
+    out = out.replace(new RegExp(SENTINEL, 'g'), '');
+
+    return { text: out, applied: applied };
+  }
+
+  // ---------------------------------------------------------------- rule sets
+  // The built-in table is the default, not the only option. A rule set can be supplied as data
+  // (JSON from disk, a per-site profile) so the words change without the code changing.
+  function normalizeRules(list) {
+    var errors = [], out = [];
+    if (!Array.isArray(list)) return { rules: [], errors: ['rule set must be an array'] };
+    list.forEach(function (raw, n) {
+      if (!raw || typeof raw.from !== 'string' || !raw.from.trim()) {
+        errors.push('rule ' + n + ': "from" must be a non-empty string'); return;
+      }
+      if (typeof raw.to !== 'string') {
+        errors.push('rule ' + n + ' ("' + raw.from + '"): "to" must be a string (use "" to delete)'); return;
+      }
+      var from = raw.from.trim();
+      if (/\s/.test(from) && from.split(/\s+/).length < 1) {
+        errors.push('rule ' + n + ': "from" is only whitespace'); return;
+      }
+      out.push({
+        from: from,
+        to: raw.to,
+        // a rule nobody declared safe cannot auto-cut. Unknown means dangerous.
+        safe: raw.safe === true,
+        note: typeof raw.note === 'string' ? raw.note : 'custom rule'
+      });
+    });
+    var seen = {};
+    out.forEach(function (r) {
+      var k = r.from.toLowerCase();
+      if (seen[k]) errors.push('duplicate rule: "' + r.from + '"');
+      seen[k] = true;
+    });
+    return { rules: out, errors: errors };
+  }
+
+  function sortRules(rules) {
+    return rules.slice().sort(function (a, b) { return b.from.length - a.from.length; });
+  }
+
+  var DEFAULT_THRESHOLDS = { longSentenceWords: 25, bulletWall: 4 };
+
+  function normalizeThresholds(t) {
+    var out = {};
+    var keys = Object.keys(DEFAULT_THRESHOLDS);
+    for (var i = 0; i < keys.length; i++) out[keys[i]] = DEFAULT_THRESHOLDS[keys[i]];
+    if (t === undefined || t === null) return { thresholds: out, errors: [] };
+    if (typeof t !== 'object') return { thresholds: out, errors: ['thresholds must be an object'] };
+    var errors = [];
+    Object.keys(t).forEach(function (k) {
+      if (keys.indexOf(k) === -1) { errors.push('unknown threshold: ' + k); return; }
+      var v = t[k];
+      if (typeof v !== 'number' || !isFinite(v) || Math.floor(v) !== v || v < 1) {
+        errors.push('threshold ' + k + ' must be a positive integer'); return;
+      }
+      out[k] = v;
+    });
+    return { thresholds: out, errors: errors };
+  }
+
+  function makeRuleset(phrases, intensifiers, thresholds) {
+    return {
+      phrases: phrases.slice(),
+      phrasesSorted: sortRules(phrases),
+      intensifiers: Array.isArray(intensifiers) ? intensifiers.slice() : INTENSIFIERS.slice(),
+      thresholds: thresholds || DEFAULT_THRESHOLDS
+    };
+  }
+
+  var DEFAULT_RULESET = makeRuleset(PHRASES, INTENSIFIERS, DEFAULT_THRESHOLDS);
+
+  // ---------------------------------------------------------------- analysis
+  // The biggest number in a note, used to pick the worst-case note for a repeated rule.
+  function worstNumber(note) {
+    var m = String(note || '').match(/\d+/g);
+    return m ? Math.max.apply(null, m.map(Number)) : -1;
+  }
+
+  function analyze(text, opts, ruleset) {
+    var RS = ruleset || DEFAULT_RULESET;
+    var options = opts || {};
+    var source = String(text || '');
+    var result = trim(source, options, RS);
+    var flags = findFlags(source, RS);
+    var read = readability(result.text);
+    var byRule = {};
+    flags.forEach(function (f) {
+      var key = f.rule;
+      var cur = byRule[key];
+      if (!cur) { byRule[key] = { rule: key, note: f.note, kind: f.kind, count: 1, safe: f.safe }; return; }
+      cur.count++;
+      // A rule that fires several times with different numbers used to report the first one:
+      // "long-sentence ×2 — 27 words (limit 25)" next to a 65-word sentence understated the worst
+      // case, which is the one number a writer needs. Keep the worst.
+      if (worstNumber(f.note) > worstNumber(cur.note)) cur.note = f.note;
+    });
+
+    return {
+      original: source,
+      trimmed: result.text,
+      applied: result.applied,
+      flags: flags,
+      issues: Object.keys(byRule).map(function (k) { return byRule[k]; })
+        .sort(function (a, b) { return b.count - a.count; }),
+      // two denominators on purpose: a ratio about *writing* belongs to the original text, and a
+      // ratio about the tool's effect belongs to the trimmed one. Measuring sentences on the
+      // trimmed text alone made corpus counts move when trim changed.
+      sentencesBefore: sentences(source).length,
+      sentencesAfter: sentences(result.text).length,
+      wordsBefore: countWords(source),
+      wordsAfter: countWords(result.text),
+      charsBefore: source.length,
+      charsAfter: result.text.length,
+      readability: read,
+      longestSentence: sentences(source).reduce(function (acc, s) {
+        var n = countWords(s);
+        return n > acc.words ? { words: n, text: s } : acc;
+      }, { words: 0, text: '' })
+    };
+  }
+
+  function budgetFor(id) {
+    for (var i = 0; i < BUDGETS.length; i++) if (BUDGETS[i].id === id) return BUDGETS[i];
+    return null;
+  }
+
+  function budgetStatus(id, text) {
+    var b = budgetFor(id);
+    if (!b) return null;
+    var len = String(text || '').length;
+    return {
+      id: b.id, label: b.label, max: b.max, hint: b.hint,
+      length: len, over: Math.max(0, len - b.max),
+      ratio: Math.min(1, len / b.max), fits: len <= b.max
+    };
+  }
+
+  function create(spec) {
+    var s = spec || {};
+    var list = s.phrases;
+    if (s.extend) {
+      // Extending should not require copying the whole built-in table.
+      // Redefining a built-in rule in an extending set overrides it instead of erroring.
+      var mine = {};
+      (s.phrases || []).forEach(function (x) {
+        if (x && typeof x.from === 'string') mine[x.from.trim().toLowerCase()] = true;
+      });
+      list = PHRASES.filter(function (p) { return !mine[p.from.toLowerCase()]; }).concat(s.phrases || []);
+    }
+    var res = normalizeRules(list);
+    var th = normalizeThresholds(s.thresholds);
+    var errors = res.errors.concat(th.errors);
+    if (errors.length) throw new Error('invalid rule set: ' + errors.join('; '));
+    var RS = makeRuleset(res.rules, s.intensifiers, th.thresholds);
+    return {
+      version: api.version,
+      name: typeof s.name === 'string' ? s.name : (s.extend ? 'extended' : 'custom'),
+      extended: !!s.extend,
+      PHRASES: RS.phrases,
+      INTENSIFIERS: RS.intensifiers,
+      ruleCount: RS.phrases.length,
+      thresholds: RS.thresholds,
+      trim: function (text, opts) { return trim(text, opts, RS); },
+      findFlags: function (text) { return findFlags(text, RS); },
+      analyze: function (text, opts) { return analyze(text, opts, RS); },
+      budgetStatus: budgetStatus,
+      budgetFor: budgetFor,
+      readability: readability,
+      countWords: countWords,
+      sentences: sentences
+    };
+  }
+
+  var api = {
+    version: '0.3.5',
+    create: create,
+    normalizeRules: normalizeRules,
+    DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS,
+    PHRASES: PHRASES,
+    INTENSIFIERS: INTENSIFIERS,
+    BUDGETS: BUDGETS,
+    analyze: analyze,
+    trim: trim,
+    findFlags: findFlags,
+    countWords: countWords,
+    sentences: sentences,
+    syllables: syllables,
+    readability: readability,
+    budgetFor: budgetFor,
+    budgetStatus: budgetStatus
+  };
+
+  global.Trimline = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* inlined from src/app.js */
+/* Trimline UI glue. Thin by design: all judgement lives in rules.js. */
+(function () {
+  'use strict';
+  var T = window.Trimline;
+  var el = function (id) { return document.getElementById(id); };
+  var state = { last: null, budget: 'x-post', engine: T };
+  var SAMPLE_DRAFT = 'In order to make the tool useful, it should be noted that there are a lot of ' +
+    'reasons why we decided to do it on a daily basis. The approach was built by a small ' +
+    'team in order to reduce the number of very small failures that occur each and every day.';
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function renderStats(a) {
+    var items = [
+      ['words', a.wordsBefore + ' → ' + a.wordsAfter],
+      ['chars', a.charsBefore + ' → ' + a.charsAfter],
+      ['sentences', a.sentencesBefore],
+      ['longest', a.longestSentence.words + 'w'],
+      ['reading ease', a.readability.ease === null ? '—' : a.readability.ease],
+      ['grade', a.readability.grade === null ? '—' : a.readability.grade],
+      ['findings', a.flags.length]
+    ];
+    el('stats').innerHTML = items.map(function (p) {
+      return '<div class="stat"><b>' + esc(p[1]) + '</b><small>' + esc(p[0]) + '</small></div>';
+    }).join('');
+  }
+
+  function renderBudget(a) {
+    var b = state.engine.budgetStatus(state.budget, a.trimmed);
+    if (!b) return;
+    var bar = el('budgetBar');
+    bar.style.width = Math.round(b.ratio * 100) + '%';
+    bar.className = b.over > 0 ? 'bad' : (b.ratio > 0.85 ? 'warn' : '');
+    el('budgetText').textContent = b.length + ' / ' + b.max +
+      (b.over > 0 ? ' — cut ' + b.over + ' more' : ' — fits') + ' · ' + b.hint;
+  }
+
+  function renderFlags(a) {
+    var html = a.issues.map(function (i) {
+      var cls = i.kind === 'phrase' ? (i.safe ? 'safe' : 'maybe') : '';
+      var label = i.kind === 'phrase' ? (i.safe ? 'safe cut' : 'maybe') : i.kind;
+      return '<li class="flag ' + cls + '"><span class="tag">' + esc(label) + '</span>' +
+        '<span class="m">' + esc(i.rule) + '</span> ×' + i.count +
+        '<div class="n">' + esc(i.note || '') + '</div></li>';
+    }).join('');
+    el('flags').innerHTML = html || '<li class="flag"><span class="n">Nothing to cut. Ship it.</span></li>';
+  }
+
+  function render() {
+    var src = el('src').value;
+    if (!src.trim()) {
+      el('stats').innerHTML = '';
+      el('flags').innerHTML = '';
+      el('out').textContent = '';
+      el('status').textContent = '';
+      el('budgetBar').style.width = '0%';
+      el('budgetText').textContent = '';
+      return null;
+    }
+    var a = state.engine.analyze(src, { aggressive: false });
+    state.last = a;
+    renderStats(a);
+    renderBudget(a);
+    renderFlags(a);
+    el('out').textContent = a.trimmed;
+    var saved = a.charsBefore - a.charsAfter;
+    el('status').textContent = saved > 0
+      ? 'Safe cuts would remove ' + saved + ' characters (' +
+        Math.round((saved / a.charsBefore) * 100) + '%).'
+      : 'No safe cuts found — the text is already lean.';
+    return a;
+  }
+
+  function applyCut(aggressive) {
+    var src = el('src').value;
+    if (!src.trim()) return;
+    var r = state.engine.trim(src, { aggressive: aggressive });
+    if (r.text === src) {
+      el('status').textContent = aggressive
+        ? 'Already trimmed. Nothing left that the rules recognise.'
+        : 'No safe cuts found. Try "Apply everything" to see the riskier ones.';
+      return;
+    }
+    state.prev = src;
+    el('src').value = r.text;
+    render();
+    el('status').textContent = 'Applied ' + r.applied.length + ' change' +
+      (r.applied.length === 1 ? '' : 's') + '. Undo is available.';
+  }
+
+  function downloadCard() {
+    var a = state.last || render();
+    if (!a) { el('status').textContent = 'Type or paste something first.'; return; }
+    var c = document.createElement('canvas');
+    c.width = 1600; c.height = 900;
+    var x = c.getContext('2d');
+    x.fillStyle = '#0e1116'; x.fillRect(0, 0, 1600, 900);
+    x.fillStyle = '#ffd23f'; x.fillRect(90, 90, 12, 110);
+    x.fillStyle = '#e8edf2';
+    x.font = '650 64px ui-sans-serif, system-ui, sans-serif';
+    x.fillText('Trimline', 130, 155);
+    x.fillStyle = '#93a0af';
+    x.font = '400 30px ui-sans-serif, system-ui, sans-serif';
+    x.fillText('cut the flab, keep the meaning', 132, 200);
+
+    x.fillStyle = '#e8edf2';
+    x.font = '700 130px ui-monospace, Menlo, monospace';
+    var before = String(a.wordsBefore), after = String(a.wordsAfter);
+    x.fillText(before, 130, 400);
+    x.fillStyle = '#93a0af'; x.fillText('→', 130 + x.measureText(before).width + 40, 400);
+    x.fillStyle = '#ffd23f';
+    x.fillText(after, 130 + x.measureText(before).width + 130, 400);
+    x.fillStyle = '#93a0af';
+    x.font = '400 26px ui-sans-serif, system-ui, sans-serif';
+    x.fillText('words ' + a.wordsBefore + ' → ' + a.wordsAfter +
+      ' · longest sentence ' + a.longestSentence.words + ' words', 132, 445);
+
+    // percentage block, mirroring tools/make_card.py (the reference layout)
+    var cut = Math.max(0, a.charsBefore - a.charsAfter);
+    var pct = a.charsBefore ? Math.round((cut / a.charsBefore) * 100) : 0;
+    x.fillStyle = '#ffd23f';
+    x.font = '700 92px ui-monospace, Menlo, monospace';
+    var pctLabel = '−' + pct + '%';
+    x.fillText(pctLabel, 1600 - 130 - x.measureText(pctLabel).width, 400);
+    x.fillStyle = '#93a0af';
+    x.font = '400 26px ui-sans-serif, system-ui, sans-serif';
+    x.fillText('characters removed', 1600 - 130 - x.measureText('characters removed').width, 445);
+
+    // proportion bars
+    var maxW = 1340;
+    var wb = a.charsBefore ? Math.max(40, (a.charsBefore / Math.max(a.charsBefore, 1)) * maxW) : 0;
+    var wa = a.charsAfter ? Math.max(40, (a.charsAfter / Math.max(a.charsBefore, 1)) * maxW) : 0;
+    x.fillStyle = '#2a313c'; x.fillRect(132, 510, wb, 26);
+    x.fillStyle = '#ffd23f'; x.fillRect(132, 552, wa, 26);
+
+    // bounded row count. Rows run 690/730/770/810 and the footer sits at 850, so a 5th line
+    // (the overflow line) used to print straight over the footer. Cap at 3 rows when overflow needs
+    // a line of its own — the same clamp the Python reference card already had.
+    var cap = a.issues.length > 4 ? 3 : 4;
+    var top = a.issues.slice(0, cap);
+    var overflow = Math.max(0, a.issues.length - cap);
+    x.fillStyle = '#93a0af';
+    x.font = '400 24px ui-sans-serif, system-ui, sans-serif';
+    x.fillText(top.length ? 'main patterns found' : 'main patterns found', 132, 640);
+    x.fillStyle = '#e8edf2';
+    x.font = '400 34px ui-monospace, Menlo, monospace';
+    top.forEach(function (i, n) {
+      var auto = i.kind === 'phrase' && i.safe !== false;
+      x.fillText('· ' + i.rule + '  ×' + i.count + (auto ? '  (auto-cut)' : '  (flagged only)'),
+        150, 690 + n * 40);
+    });
+    if (overflow) {
+      x.fillStyle = '#93a0af';
+      // one row below the last drawn row, not a hardcoded index that used to land on the footer
+      x.fillText('+ ' + overflow + ' more pattern' + (overflow > 1 ? 's' : ''), 150, 690 + top.length * 40);
+    }
+
+    x.fillStyle = '#93a0af';
+    x.font = '400 24px ui-sans-serif, system-ui, sans-serif';
+    x.fillText('rules engine v' + T.version + ' · offline · no text leaves the page', 132, 850);
+
+    // QA hook: open the page with #cardpreview and the card is drawn into the document instead of
+    // being handed to the browser as a download. The canvas is otherwise invisible, and "it called
+    // toDataURL" is not the same as "the card is legible" — this is how that got checked.
+    if (typeof location !== 'undefined' && /cardpreview/.test(location.hash || '')) {
+      var old = document.querySelector('[data-card-preview]');
+      if (old) old.remove();
+      c.setAttribute('data-card-preview', '1');
+      c.style.cssText = 'display:block;width:100%;height:auto;background:#0e1116';
+      document.body.appendChild(c);
+      el('status').textContent = 'Card drawn in page (preview mode).';
+      return;
+    }
+
+    var link = document.createElement('a');
+    link.download = 'trimline-card.png';
+    link.href = c.toDataURL('image/png');
+    link.click();
+    el('status').textContent = 'Share card downloaded (1600×900).';
+  }
+
+  function init() {
+    if (!T) { el('status').textContent = 'rules.js failed to load'; return; }
+    el('ver').textContent = T.version;
+    el('ruleCount').textContent = T.PHRASES.length;
+    el('rulesetStatus').textContent = 'built-in table (' + T.PHRASES.length + ' rules)';
+    el('budget').innerHTML = T.BUDGETS.map(function (b) {
+      return '<option value="' + b.id + '">' + esc(b.label) + ' (' + b.max + ')</option>';
+    }).join('');
+    el('budget').value = state.budget;
+
+    var t = el('src');
+    if (!t.value.trim()) t.value = SAMPLE_DRAFT;
+    t.addEventListener('input', render);
+    el('budget').addEventListener('change', function (e) { state.budget = e.target.value; render(); });
+    el('apply').addEventListener('click', function () { applyCut(false); });
+    el('aggressive').addEventListener('click', function () { applyCut(true); });
+    el('undo').addEventListener('click', function () {
+      if (typeof state.prev === 'string') { el('src').value = state.prev; render(); }
+    });
+    el('copy').addEventListener('click', function () {
+      var out = (state.last && state.last.trimmed) || '';
+      if (!out) return;
+      navigator.clipboard.writeText(out).then(
+        function () { el('status').textContent = 'Trimmed text copied.'; },
+        function () { el('status').textContent = 'Clipboard blocked — select the box and copy manually.'; }
+      );
+    });
+    el('card').addEventListener('click', downloadCard);
+    el('clear').addEventListener('click', function () { el('src').value = ''; render(); t.focus(); });
+    el('loadrules').addEventListener('click', function () {
+      var raw = el('ruleset').value;
+      if (!raw.trim()) { el('rulesetStatus').textContent = 'Paste a rule set as JSON first.'; return; }
+      var spec;
+      try { spec = JSON.parse(raw); } catch (e) {
+        el('rulesetStatus').textContent = 'not valid JSON: ' + e.message; return;
+      }
+      try {
+        state.engine = T.create(Array.isArray(spec) ? { phrases: spec } : spec);
+        el('rulesetStatus').textContent = 'loaded "' + state.engine.name + '" (' +
+          state.engine.ruleCount + ' rules)';
+        render();
+      } catch (e) {
+        state.engine = T;
+        el('rulesetStatus').textContent = e.message;
+        render();
+      }
+    });
+    el('resetrules').addEventListener('click', function () {
+      state.engine = T; el('ruleset').value = '';
+      el('rulesetStatus').textContent = 'built-in table (' + T.PHRASES.length + ' rules)';
+      render();
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); applyCut(false); }
+    });
+    render();
+  }
+
+  window.TrimelineUI = { render: render, applyCut: applyCut, downloadCard: downloadCard, state: state };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+</script>
+</body>
+</html>
