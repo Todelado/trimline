@@ -41,7 +41,12 @@ function verify(html) {
   if (/\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon/.test(html)) {
     problems.push('contains a network API');
   }
-  if (/https?:\/\//.test(html)) problems.push('contains a remote URL');
+  // a link a person clicks is not a request the page makes; strip anchors before asking who is remote
+  const noAnchors = html.replace(/<a\b[^>]*>/gi, '');
+  if (/https?:\/\//.test(noAnchors)) problems.push('names a remote host outside an <a href>');
+  const loaders = (html.match(/(?:src|srcset|action|formaction|poster)\s*=\s*["'][^"']*["']/gi) || [])
+    .filter(function (a) { return /https?:\/\//.test(a); });
+  if (loaders.length) problems.push('loading attribute points off-machine: ' + loaders.join(', '));
   for (const rel of PARTS) {
     if (html.indexOf('inlined from ' + rel) === -1) problems.push('missing inlined block: ' + rel);
   }

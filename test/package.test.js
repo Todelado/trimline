@@ -25,12 +25,26 @@ test('no network APIs are referenced anywhere in the shipped page', () => {
   });
 });
 
-test('no remote URLs are referenced, so the offline claim holds', () => {
-  ALL.forEach(function (f) {
-    const src = read(f);
-    const hits = src.match(/https?:\/\/[^\s"'<>)]+/g) || [];
+test('app code names no remote host at all', () => {
+  // the engine and the UI logic must not know how to reach anything: no host string to dial
+  JS_FILES.forEach(function (f) {
+    const hits = read(f).match(/https?:\/\/[^\s"'<>)]+/g) || [];
     assert.deepEqual(hits, [], path.basename(f) + ' references remote URLs: ' + hits.join(', '));
   });
+});
+
+test('the page may only name a remote host inside an <a href> a person chooses to click', () => {
+  // The claim is "the page makes no network calls", not "contains no string with http in it".
+  // A link is not a request. Everything that *is* a request stays banned: src, srcset, action,
+  // poster, and the network APIs above. Remove the anchors and no host may survive.
+  const src = read(PAGE);
+  const withoutAnchors = src.replace(/<a\b[^>]*>/gi, '');
+  const leaks = withoutAnchors.match(/https?:\/\/[^\s"'<>)]+/g) || [];
+  assert.deepEqual(leaks, [], 'page loads or posts to a remote host: ' + leaks.join(', '));
+  const attrs = (src.match(/(?:src|srcset|action|formaction|poster|data)\s*=\s*["'][^"']*["']/g) || [])
+    .filter(function (a) { return /https?:\/\//.test(a); });
+  assert.deepEqual(attrs, [], 'a loading attribute points off-machine: ' + attrs.join(', '));
+  assert.ok(!/href\s*=\s*["']javascript:/i.test(src), 'javascript: href is not a link, it is code');
 });
 
 test('every local asset the page references exists on disk', () => {

@@ -17,7 +17,7 @@ the tests now refuse to let happen again.
 build step. It makes no network calls of its own: the engine ships inside the page.
 
 Want it as one file? [`trimline.html`](https://todelado.github.io/trimline/trimline.html)
-(42,754 bytes) is the same tool with the engine and styles inlined. Save it, open it from a USB stick,
+(43 KB) is the same tool with the engine and styles inlined. Save it, open it from a USB stick,
 put it on a machine with no network — it behaves identically. The committed copy is checked against
 `src/` by a test, so it cannot drift behind the source without CI failing.
 

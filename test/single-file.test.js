@@ -30,7 +30,12 @@ test('every inlined block is byte-identical to the source the other tests cover'
 test('nothing is fetched and nothing is remote', () => {
   assert.ok(!/<script[^>]+src=/i.test(html), 'external script reference survived inlining');
   assert.ok(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon/.test(html));
-  assert.ok(!/https?:\/\//.test(html), 'single file must not name a remote host');
+  // same distinction as package.test.js: an <a href> is a link, not a request
+  const withoutAnchors = html.replace(/<a\b[^>]*>/gi, '');
+  assert.ok(!/https?:\/\//.test(withoutAnchors), 'single file loads or posts to a remote host');
+  const attrs = (html.match(/(?:src|srcset|action|formaction|poster)\s*=\s*["'][^"']*["']/g) || [])
+    .filter(function (a) { return /https?:\/\//.test(a); });
+  assert.deepEqual(attrs, [], 'a loading attribute points off-machine: ' + attrs.join(', '));
 });
 
 test('the single file states the same engine version as package.json', () => {
