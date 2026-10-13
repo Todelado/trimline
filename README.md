@@ -21,7 +21,14 @@ Want it as one file? [`trimline.html`](https://todelado.github.io/trimline/triml
 put it on a machine with no network — it behaves identically. The committed copy is checked against
 `src/` by a test, so it cannot drift behind the source without CI failing.
 
-Locally: `npm test` (85 tests, no dependencies to install), or `node src/cli.js draft.txt -b x-post --diff`.
+Locally: `npm test` — no dependencies to install, and it covers the engine, the claims made on this page,
+the UI wiring, the CLI and the single-file build. Or run the linter straight away:
+`node src/cli.js draft.txt -b x-post --diff`.
+
+![Trimline trimming a draft and labelling each pattern it found](card.png)
+
+That image is not a mockup. `tools/make_card.py` renders it from the live engine, so every figure on it came
+out of `src/cli.js --json` rather than from a person who remembered it.
 
 ## How the thresholds were calibrated
 
@@ -68,7 +75,7 @@ node src/cli.js draft.txt --out - | wc -c       # stdout = trimmed text, report 
 node src/cli.js draft.txt --rules rulesets/lean-voice.json --extend
 
 # tests
-npm test          # 84 tests: engine, public claims, headless UI wiring, CLI, single-file build
+npm test          # engine, public claims, UI wiring, CLI, single-file build
 ```
 
 CLI flags: `-b/--budget` (`x-post`, `subject`, `linkedin`, …), `-a/--aggressive`
@@ -163,10 +170,10 @@ index.html          single page, inline CSS, loads src/rules.js + src/app.js
 src/rules.js        rules engine (pure, browser + node)
 src/app.js          UI glue (thin on purpose)
 src/cli.js          command line + CI entry point
-test/rules.test.js      31 engine tests (rules, rule sets, sentence boundaries)
-test/app.smoke.test.js  8 headless DOM tests for the UI wiring
-test/cli.test.js        17 tests that run the real binary
-test/package.test.js    6 tests that enforce the claims the posts make
+test/rules.test.js      rules, rule sets, sentence boundaries, safety invariants
+test/app.smoke.test.js  headless DOM tests for the UI wiring
+test/cli.test.js        runs the real binary, including the no-tty guard
+test/package.test.js    enforces the claims this page and the posts make
 rulesets/               example rule sets (lean-voice.json = stricter post profile)
 tools/make_card.py      reference share-card renderer (reads src/cli.js --json)
 tools/make_identity.py  avatar/banner crops from the source art

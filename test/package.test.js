@@ -125,3 +125,33 @@ test('link previews get real metadata, and the preview image is a file in this r
   const tests = desc.match(/\d+\s+tests/i);
   assert.ok(!tests, 'do not put a test count in page metadata: ' + (tests && tests[0]));
 });
+
+/* The README is the most-read file in the project and it was quietly carrying three different test
+   counts at once (85, 84, and per-file 17/6) while the suite stood at 92. A number nobody re-measures
+   is a claim nobody checks, so the same policy as the page metadata applies: rule counts must match the
+   engine, version must match package.json, and test counts may not appear at all. */
+test('README may not carry numbers that rot', () => {
+  const Trimline = require('../src/rules.js');
+  const pkg = require('../package.json');
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+
+  const title = readme.match(/^# Trimline v(\d+\.\d+\.\d+)/m);
+  assert.ok(title, 'README should open with the engine version');
+  assert.equal(title[1], pkg.version, 'README title says v' + title[1] + ', package.json says v' + pkg.version);
+
+  const counts = [...readme.matchAll(/(\d+)\s+tests\b/g)].map((m) => m[1]);
+  assert.deepEqual(counts, [],
+    'README states test counts (' + counts.join(', ') + '); they drift the moment a test is added — say what the suites cover instead');
+
+  [...readme.matchAll(/(\d+)\s+(?:phrase\s+)?rules\b/g)].forEach(function (m) {
+    assert.equal(Number(m[1]), Trimline.PHRASES.length,
+      'README claims ' + m[1] + ' rules; the engine has ' + Trimline.PHRASES.length);
+  });
+
+  const kb = readme.match(/(\d+)\s+KB/);
+  if (kb) {
+    const bytes = fs.statSync(path.join(ROOT, 'trimline.html')).size;
+    assert.ok(Math.abs(bytes / 1000 - Number(kb[1])) <= 1,
+      'README says ' + kb[1] + ' KB; trimline.html is ' + bytes + ' bytes');
+  }
+});
