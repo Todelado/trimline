@@ -113,4 +113,15 @@ test('link previews get real metadata, and the preview image is a file in this r
   assert.ok(img, 'og:image missing — preview has no image');
   assert.ok(!/^https?:/i.test(img), 'og:image must stay relative so the page has no host dependency: ' + img);
   assert.ok(fs.existsSync(path.join(ROOT, img)), 'og:image names a file that is not in the repo: ' + img);
+  // any count in the preview copy has to come from the engine, not from whoever wrote the sentence:
+  // a stale "79 tests" already shipped once in a post, and metadata rots the same way
+  const desc = meta('og:description');
+  const claimed = (desc.match(/(\d+)\s+(?:phrase\s+)?rules/gi) || [])
+    .map(function (m) { return parseInt(m, 10); });
+  claimed.forEach(function (n) {
+    assert.equal(n, Trimline.PHRASES.length,
+      'preview copy claims ' + n + ' rules; the engine has ' + Trimline.PHRASES.length);
+  });
+  const tests = desc.match(/\d+\s+tests/i);
+  assert.ok(!tests, 'do not put a test count in page metadata: ' + (tests && tests[0]));
 });
