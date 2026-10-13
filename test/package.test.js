@@ -148,10 +148,11 @@ test('README may not carry numbers that rot', () => {
       'README claims ' + m[1] + ' rules; the engine has ' + Trimline.PHRASES.length);
   });
 
-  const kb = readme.match(/(\d+)\s+KB/);
-  if (kb) {
-    const bytes = fs.statSync(path.join(ROOT, 'trimline.html')).size;
-    assert.ok(Math.abs(bytes / 1000 - Number(kb[1])) <= 1,
-      'README says ' + kb[1] + ' KB; trimline.html is ' + bytes + ' bytes');
+  const size = readme.match(/([\d,]{4,})\s+bytes/);
+  if (size) {
+    const claimed = Number(size[1].replace(/,/g, ''));
+    const actual = fs.statSync(path.join(ROOT, 'trimline.html')).size;
+    assert.equal(claimed, actual,
+      'README says ' + claimed + ' bytes; trimline.html is ' + actual + ' — state a size exactly or not at all');
   }
 });
