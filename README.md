@@ -1,4 +1,4 @@
-# Trimline v0.3.5
+# Trimline v0.3.6
 
 Cut the flab, keep the meaning. A rule-based text linter for short-form writing —
 the kind of editing that turns 280 characters of fog into 280 characters of point.

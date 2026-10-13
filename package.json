@@ -1,6 +1,6 @@
 {
   "name": "trimline",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Offline, rule-based text tightening for short-form writing. Zero dependencies.",
   "license": "MIT",
   "type": "commonjs",

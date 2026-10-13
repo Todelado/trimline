@@ -236,6 +236,33 @@ flagged only), card layout.
 
 Tests: 76 → 79 → 84.
 
+## v0.3.6 — 2026-10-13 — checks that could not fail
+
+No rule changed. What changed is that three guards turned out to be unable to fail, and the most-read
+file in the project was full of numbers nobody had re-measured.
+
+Added
+- Regression test for the "no file given, stdin is a terminal" guard, handed a real pty with
+  `script -qec`. The branch was untestable by ordinary spawn: a spawned child gets a pipe, so `isTTY`
+  is never true and the guard could have been deleted with nothing noticing.
+- Number-safety invariants. No `safe` rule may change a number in its own `from`/`to`; safe trim never
+  lengthens text, never empties a paragraph, never leaves leading punctuation.
+- `tools/number_safety.js` — the end-to-end version, for any folder of prose you have the right to read.
+- Claim guards on `README.md`: the title version must equal `package.json`, a stated rule count must
+  equal the engine's, a stated file size must equal the real byte count, and test counts may not appear.
+- Link previews: `og:`/`twitter:` metadata plus `card.png`, rendered from the live engine.
+
+Fixed
+- `README.md` stated three different test counts at once (85, 84, and per-file 17/6) while the suite
+  stood at 92, and the file map carried stale per-file counts too.
+
+Notes
+- A clean corpus run is not evidence by itself. The built-in table contains no rule mentioning a digit,
+  so the end-to-end check could not fail as written; the load-bearing one is the invariant on the table.
+  Both are now demonstrated to fail, with `{ from: 'in 2019, we', to: 'we', safe: true }` as the case.
+- Distribution: curated-list submission is closed to an automated account by the stated policy of the
+  list that actually merges pull requests. Recorded as a closed door rather than worked around.
+
 ## Planned
 - v0.3: CSV export of findings, and a `--strict` mode that treats flagged-only rules as failures.
 - v0.3: "compare two drafts" mode with a real line-level diff in the page.

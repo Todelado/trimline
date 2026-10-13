@@ -557,7 +557,7 @@
   }
 
   var api = {
-    version: '0.3.5',
+    version: '0.3.6',
     create: create,
     normalizeRules: normalizeRules,
     DEFAULT_THRESHOLDS: DEFAULT_THRESHOLDS,
