@@ -366,3 +366,40 @@ test('a repeated rule reports its worst finding, not its first', () => {
   assert.equal(ls[0].count, 2);
   assert.ok(/65 words/.test(ls[0].note), 'note should quote the 65-word sentence, got: ' + ls[0].note);
 });
+
+// A linter that silently edits a figure is worse than no linter: the number is the part people
+// quote back. These invariants are about the *table*, because a corpus run cannot fail while no
+// rule mentions a digit — an unreachable check is not evidence (learned the hard way with isTTY).
+const NUMS = /\d+(?:[.,]\d+)*|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|hundred|thousand|million|billion)\b/gi;
+const numBag = (s) => (String(s).match(NUMS) || []).map((x) => x.toLowerCase().replace(/[.,]$/, ''));
+function changesNumbers(from, to) {
+  const a = numBag(from), b = numBag(to || '');
+  return a.length !== b.length || a.some((x, i) => x !== b[i]);
+}
+
+test('no safe rule in the built-in table changes a number', () => {
+  const offenders = Trimline.PHRASES.filter((r) => r.safe && changesNumbers(r.from, r.to))
+    .map((r) => JSON.stringify(r.from) + ' -> ' + JSON.stringify(r.to));
+  assert.deepEqual(offenders, [], 'safe rules must never alter digits: ' + offenders.join(', '));
+});
+
+test('that check does fire on a rule that does change a number', () => {
+  // proof it is not decoration: the same predicate applied to a plausible-sounding rule
+  assert.equal(changesNumbers('in 2019 we', 'in the 2010s we'), true);
+  assert.equal(changesNumbers('each and every', 'every'), false);
+});
+
+test('safe trimming never lengthens text and never empties it', () => {
+  const inputs = [
+    'It should be noted that in order to succeed, the team decided to make a decision to iterate on a daily basis.',
+    'The report states that "in order to comply, a total of 3.5 million items were reviewed".',
+    'There are a lot of reasons why we decided to do it on a daily basis.',
+    'Dr. No said the 20 items were, in fact, each and every one of the 20.'
+  ];
+  inputs.forEach(function (t) {
+    const out = Trimline.trim(t).text;
+    assert.ok(out.length <= t.length, 'safe trim lengthened: ' + JSON.stringify(out));
+    assert.ok(out.trim().length > 0, 'safe trim emptied the paragraph');
+    assert.ok(!/^[\s,.;:]/.test(out), 'safe trim left leading punctuation: ' + JSON.stringify(out));
+  });
+});
