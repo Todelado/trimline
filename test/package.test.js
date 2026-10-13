@@ -97,3 +97,20 @@ test('the page\'s own prose obeys its own rules', () => {
   });
   assert.deepEqual(offenders, [], 'UI copy trips its own rules: ' + offenders.join('; '));
 });
+
+test('link previews get real metadata, and the preview image is a file in this repo', () => {
+  const src = read(PAGE);
+  const meta = function (key) {
+    const re = new RegExp('<meta[^>]+(?:property|name)="[^"]*' + key + '"[^>]+content="([^"]*)"', 'i');
+    const rev = new RegExp('<meta[^>]+content="([^"]*)"[^>]+(?:property|name)="[^"]*' + key + '"', 'i');
+    const m = src.match(re) || src.match(rev);
+    return m ? m[1] : null;
+  };
+  assert.ok(meta('og:title'), 'og:title missing — a shared link renders as a bare URL');
+  assert.ok(meta('og:description'), 'og:description missing');
+  assert.equal(meta('twitter:card'), 'summary_large_image', 'twitter:card must ask for the large image');
+  const img = meta('og:image');
+  assert.ok(img, 'og:image missing — preview has no image');
+  assert.ok(!/^https?:/i.test(img), 'og:image must stay relative so the page has no host dependency: ' + img);
+  assert.ok(fs.existsSync(path.join(ROOT, img)), 'og:image names a file that is not in the repo: ' + img);
+});
