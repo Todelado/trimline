@@ -136,3 +136,24 @@ test('--extend reports the merged rule count', () => {
     '48 built-ins + 1 new, and the limit is stated too');
   assert.match(r.stdout, /in order to  \(safe\)/, 'built-in rules stay live');
 });
+
+test('a terminal that gives no text is refused instead of hanging', async () => {
+  // Reaching this guard needs a real tty in front of the child, which only `script -qec CMD /dev/null`
+  // (util-linux) gives: a plain spawn always hands the child a pipe. stdin is left as an open pipe, so a
+  // missing guard blocks forever instead of failing fast — which is the bug this post was about.
+  const cli = CLI;
+  const child = require('node:child_process').spawn('script', ['-qec', 'node ' + JSON.stringify(cli), '/dev/null'],
+    { stdio: ['pipe', 'pipe', 'pipe'] });
+  let out = '';
+  child.stdout.on('data', function (d) { out += d; });
+  child.stderr.on('data', function (d) { out += d; });
+  const code = await new Promise(function (resolve, reject) {
+    const t = setTimeout(function () {
+      child.kill('SIGKILL');
+      reject(new Error('cli waited on the terminal instead of refusing. output: ' + JSON.stringify(out)));
+    }, 3000);
+    child.on('exit', function (c) { clearTimeout(t); resolve(c); });
+  });
+  assert.equal(code, 2, 'expected the no-input refusal to exit 2, got ' + code);
+  assert.match(out, /no input/, 'expected a refusal message, got ' + JSON.stringify(out));
+});
